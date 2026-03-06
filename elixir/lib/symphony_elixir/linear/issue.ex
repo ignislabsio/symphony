@@ -17,7 +17,8 @@ defmodule SymphonyElixir.Linear.Issue do
     labels: [],
     assigned_to_worker: true,
     created_at: nil,
-    updated_at: nil
+    updated_at: nil,
+    last_comment: nil
   ]
 
   @type t :: %__MODULE__{
@@ -33,7 +34,8 @@ defmodule SymphonyElixir.Linear.Issue do
           labels: [String.t()],
           assigned_to_worker: boolean(),
           created_at: DateTime.t() | nil,
-          updated_at: DateTime.t() | nil
+          updated_at: DateTime.t() | nil,
+          last_comment: String.t() | nil
         }
 
   @spec label_names(t()) :: [String.t()]
