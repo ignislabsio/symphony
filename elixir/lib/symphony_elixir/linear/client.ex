@@ -45,6 +45,12 @@ defmodule SymphonyElixir.Linear.Client do
         }
         createdAt
         updatedAt
+        comments(first: 1, orderBy: updatedAt) {
+          nodes {
+            body
+            updatedAt
+          }
+        }
       }
       pageInfo {
         hasNextPage
@@ -90,6 +96,12 @@ defmodule SymphonyElixir.Linear.Client do
         }
         createdAt
         updatedAt
+        comments(first: 1, orderBy: updatedAt) {
+          nodes {
+            body
+            updatedAt
+          }
+        }
       }
     }
   }
@@ -406,11 +418,19 @@ defmodule SymphonyElixir.Linear.Client do
       labels: extract_labels(issue),
       assigned_to_worker: assigned_to_worker?(assignee, assignee_filter),
       created_at: parse_datetime(issue["createdAt"]),
-      updated_at: parse_datetime(issue["updatedAt"])
+      updated_at: parse_datetime(issue["updatedAt"]),
+      last_comment: extract_last_comment(issue)
     }
   end
 
   defp normalize_issue(_issue, _assignee_filter), do: nil
+
+  defp extract_last_comment(issue) do
+    case get_in(issue, ["comments", "nodes"]) do
+      [%{"body" => body} | _] when is_binary(body) -> body
+      _ -> nil
+    end
+  end
 
   defp assignee_field(%{} = assignee, field) when is_binary(field), do: assignee[field]
   defp assignee_field(_assignee, _field), do: nil
