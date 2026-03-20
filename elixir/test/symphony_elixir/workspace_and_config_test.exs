@@ -3,7 +3,7 @@ defmodule SymphonyElixir.WorkspaceAndConfigTest do
   alias Ecto.Changeset
   alias SymphonyElixir.Config.Schema
   alias SymphonyElixir.Config.Schema.{Codex, StringOrMap}
-  alias SymphonyElixir.Linear.Client
+  alias SymphonyElixir.Linear.{Client, Issue, Routing}
 
   test "workspace bootstrap can be implemented in after_create hook" do
     test_root =
@@ -295,6 +295,57 @@ defmodule SymphonyElixir.WorkspaceAndConfigTest do
     assert :ok = Workspace.remove_issue_workspaces(nil)
   end
 
+  test "linear routing parses repo and branch labels" do
+    issue = %Issue{
+      id: "issue-1",
+      identifier: "MT-ROUTE",
+      labels: ["frontend", "repo:ignislabsio/mycards-api", "branch:feature/react-refresh"]
+    }
+
+    assert Routing.selection(issue) == %{repo: "ignislabsio/mycards-api", branch: "feature/react-refresh"}
+    assert Routing.repo(issue) == "ignislabsio/mycards-api"
+    assert Routing.branch(issue) == "feature/react-refresh"
+
+    assert Routing.hook_env(issue) == [
+             {"SYMPHONY_ISSUE_ID", "issue-1"},
+             {"SYMPHONY_ISSUE_IDENTIFIER", "MT-ROUTE"},
+             {"SYMPHONY_REPO", "ignislabsio/mycards-api"},
+             {"SYMPHONY_BRANCH", "feature/react-refresh"}
+           ]
+  end
+
+  test "workspace hooks receive issue routing environment variables" do
+    workspace_root =
+      Path.join(
+        System.tmp_dir!(),
+        "symphony-elixir-workspace-routing-env-#{System.unique_integer([:positive])}"
+      )
+
+    try do
+      write_workflow_file!(Workflow.workflow_file_path(),
+        workspace_root: workspace_root,
+        hook_after_create: ~S"""
+        printf '%s\n' "$SYMPHONY_ISSUE_IDENTIFIER" > route.txt
+        printf '%s\n' "$SYMPHONY_REPO" >> route.txt
+        printf '%s\n' "$SYMPHONY_BRANCH" >> route.txt
+        """
+      )
+
+      issue = %Issue{
+        id: "issue-2",
+        identifier: "MT-ENV",
+        labels: ["repo:ignislabsio/mycards-api", "branch:feature/site"]
+      }
+
+      assert {:ok, workspace} = Workspace.create_for_issue(issue)
+
+      assert File.read!(Path.join(workspace, "route.txt")) ==
+               "MT-ENV\nignislabsio/mycards-api\nfeature/site\n"
+    after
+      File.rm_rf(workspace_root)
+    end
+  end
+
   test "linear issue helpers" do
     issue = %Issue{
       id: "abc",
@@ -348,11 +399,26 @@ defmodule SymphonyElixir.WorkspaceAndConfigTest do
     issue = Client.normalize_issue_for_test(raw_issue, "user-1")
 
     assert issue.blocked_by == [%{id: "issue-2", identifier: "MT-2", state: "In Progress"}]
+    assert issue.last_comment == nil
     assert issue.labels == ["backend"]
     assert issue.priority == 2
     assert issue.state == "Todo"
     assert issue.assignee_id == "user-1"
     assert issue.assigned_to_worker
+  end
+
+  test "linear client extracts last comment body" do
+    raw_issue = %{
+      "id" => "issue-77",
+      "identifier" => "MT-77",
+      "title" => "Comment-aware prompt",
+      "state" => %{"name" => "Todo"},
+      "comments" => %{"nodes" => [%{"body" => "Latest Linear comment", "updatedAt" => "2026-01-02T00:00:00Z"}]}
+    }
+
+    issue = Client.normalize_issue_for_test(raw_issue, nil)
+
+    assert issue.last_comment == "Latest Linear comment"
   end
 
   test "linear client marks explicitly unassigned issues as not routed to worker" do
