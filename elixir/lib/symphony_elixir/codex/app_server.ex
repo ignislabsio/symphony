@@ -422,7 +422,9 @@ defmodule SymphonyElixir.Codex.AppServer do
       {:error, _reason} ->
         log_non_json_stream_line(payload_string, "turn stream")
 
-        if protocol_message_candidate?(payload_string) do
+        if malformed_protocol_message_candidate?(payload_string) do
+          Logger.warning("Codex malformed protocol candidate: #{inspect(String.trim(payload_string))}")
+
           emit_message(
             on_message,
             :malformed,
@@ -979,11 +981,37 @@ defmodule SymphonyElixir.Codex.AppServer do
     end
   end
 
-  defp protocol_message_candidate?(data) do
+  defp malformed_protocol_message_candidate?(data) do
     data
     |> to_string()
-    |> String.trim_leading()
-    |> String.starts_with?("{")
+    |> String.trim()
+    |> malformed_protocol_message_candidate_trimmed?()
+  end
+
+  defp malformed_protocol_message_candidate_trimmed?(""), do: false
+
+  defp malformed_protocol_message_candidate_trimmed?(trimmed) do
+    String.starts_with?(trimmed, "{") and
+      protocol_payload_marker?(trimmed) and
+      not likely_multiline_json_fragment?(trimmed)
+  end
+
+  defp protocol_payload_marker?(trimmed) when is_binary(trimmed) do
+    Enum.any?(
+      [
+        ~s("method"),
+        ~s("id"),
+        ~s("result"),
+        ~s("error")
+      ],
+      &String.contains?(trimmed, &1)
+    )
+  end
+
+  defp likely_multiline_json_fragment?(trimmed) when is_binary(trimmed) do
+    String.ends_with?(trimmed, "{") or
+      String.ends_with?(trimmed, "[") or
+      String.ends_with?(trimmed, ",")
   end
 
   defp issue_context(%{id: issue_id, identifier: identifier}) do

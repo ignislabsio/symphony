@@ -1205,6 +1205,82 @@ defmodule SymphonyElixir.AppServerTest do
     end
   end
 
+  test "app server ignores multiline stderr JSON fragments that resemble payloads" do
+    test_root =
+      Path.join(
+        System.tmp_dir!(),
+        "symphony-elixir-app-server-stderr-json-fragments-#{System.unique_integer([:positive])}"
+      )
+
+    try do
+      workspace_root = Path.join(test_root, "workspaces")
+      workspace = Path.join(workspace_root, "MT-92B")
+      codex_binary = Path.join(test_root, "fake-codex")
+      File.mkdir_p!(workspace)
+
+      File.write!(codex_binary, """
+      #!/bin/sh
+      count=0
+      while IFS= read -r line; do
+        count=$((count + 1))
+
+        case "$count" in
+          1)
+            printf '%s\n' '{"id":1,"result":{}}'
+            ;;
+          2)
+            printf '%s\n' '{"id":2,"result":{"thread":{"id":"thread-92b"}}}'
+            ;;
+          3)
+            printf '%s\n' '{"id":3,"result":{"turn":{"id":"turn-92b"}}}'
+            ;;
+          4)
+            printf '%s\n' '{'
+            printf '%s\n' '  "error": {'
+            printf '%s\n' '    "message": "refresh token reused",'
+            printf '%s\n' '    "type": "invalid_request_error"'
+            printf '%s\n' '  }'
+            printf '%s\n' '}'
+            printf '%s\n' '{"method":"turn/completed"}'
+            exit 0
+            ;;
+          *)
+            exit 0
+            ;;
+        esac
+      done
+      """)
+
+      File.chmod!(codex_binary, 0o755)
+
+      write_workflow_file!(Workflow.workflow_file_path(),
+        workspace_root: workspace_root,
+        codex_command: "#{codex_binary} app-server"
+      )
+
+      issue = %Issue{
+        id: "issue-stderr-json-fragments",
+        identifier: "MT-92B",
+        title: "Ignore multiline stderr JSON",
+        description: "Ensure pretty-printed stderr JSON does not surface as malformed codex frames",
+        state: "In Progress",
+        url: "https://example.org/issues/MT-92B",
+        labels: ["backend"]
+      }
+
+      test_pid = self()
+      on_message = fn message -> send(test_pid, {:app_server_message, message}) end
+
+      assert {:ok, _result} =
+               AppServer.run(workspace, "Ignore multiline stderr JSON", issue, on_message: on_message)
+
+      assert_received {:app_server_message, %{event: :turn_completed}}
+      refute_received {:app_server_message, %{event: :malformed}}
+    after
+      File.rm_rf(test_root)
+    end
+  end
+
   test "app server emits malformed events for JSON-like protocol lines that fail to decode" do
     test_root =
       Path.join(
