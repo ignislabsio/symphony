@@ -62,23 +62,27 @@ defmodule SymphonyElixir.Linear.Routing do
 
     Enum.find_value(labels, fn
       label when is_binary(label) ->
-        normalized_label = String.trim(label)
-
-        case String.downcase(normalized_label) do
-          ^normalized_prefix <> rest ->
-            case String.trim(rest) do
-              "" -> nil
-              value -> value
-            end
-
-          _ ->
-            nil
-        end
+        label
+        |> String.trim()
+        |> String.downcase()
+        |> prefixed_label_value(normalized_prefix)
 
       _ ->
         nil
     end)
   end
+
+  defp prefixed_label_value(label, normalized_prefix) do
+    if String.starts_with?(label, normalized_prefix) do
+      label
+      |> String.replace_prefix(normalized_prefix, "")
+      |> String.trim()
+      |> empty_to_nil()
+    end
+  end
+
+  defp empty_to_nil(""), do: nil
+  defp empty_to_nil(value), do: value
 
   defp issue_context(%{issue_id: issue_id, issue_identifier: issue_identifier}) do
     %{

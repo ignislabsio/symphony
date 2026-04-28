@@ -314,6 +314,22 @@ defmodule SymphonyElixir.WorkspaceAndConfigTest do
            ]
   end
 
+  test "linear routing ignores empty and non-string labels" do
+    issue = %{labels: ["repo:", nil, "branch: ", :backend]}
+
+    assert Routing.selection(issue) == %{repo: nil, branch: nil}
+  end
+
+  test "linear routing builds hook env for string and default issue contexts" do
+    assert Routing.hook_env("MT-STRING") == [
+             {"SYMPHONY_ISSUE_IDENTIFIER", "MT-STRING"}
+           ]
+
+    assert Routing.hook_env(nil) == [
+             {"SYMPHONY_ISSUE_IDENTIFIER", "issue"}
+           ]
+  end
+
   test "workspace hooks receive issue routing environment variables" do
     workspace_root =
       Path.join(
@@ -838,8 +854,12 @@ defmodule SymphonyElixir.WorkspaceAndConfigTest do
     assert config.codex.read_timeout_ms == 5_000
     assert config.codex.stall_timeout_ms == 300_000
 
-    write_workflow_file!(Workflow.workflow_file_path(), codex_command: "codex app-server --model gpt-5.3-codex")
-    assert Config.settings!().codex.command == "codex app-server --model gpt-5.3-codex"
+    write_workflow_file!(Workflow.workflow_file_path(),
+      codex_command: "codex --config 'model=\"gpt-5.5\"' app-server"
+    )
+
+    assert Config.settings!().codex.command ==
+             "codex --config 'model=\"gpt-5.5\"' app-server"
 
     explicit_root =
       Path.join(

@@ -467,9 +467,7 @@ defmodule SymphonyElixir.Workspace do
   end
 
   defp remote_env_exports(env) when is_list(env) do
-    env
-    |> Enum.map(fn {key, value} -> "export #{key}=#{shell_escape(value)}" end)
-    |> Enum.join(" && ")
+    Enum.map_join(env, " && ", fn {key, value} -> "export #{key}=#{shell_escape(value)}" end)
   end
 
   defp worker_host_for_log(nil), do: "local"
